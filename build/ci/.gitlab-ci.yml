@@ -1,0 +1,27 @@
+stages:
+  - test
+  - lint
+  - build
+  - deploy
+
+test_prod:
+  tags:
+    - prod
+  stage: test
+  only:
+    - master
+  image: golang:1.20-buster
+  script:
+    - go test -v ./...
+
+lint_prod:
+  tags:
+    - prod
+  stage: lint
+  needs:
+    - test_prod
+  only:
+    - master
+  image: golangci/golangci-lint:v1.51-alpine
+  script:
+    - golangci-lint run
