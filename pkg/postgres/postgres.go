@@ -1,28 +1,38 @@
 package postgres
 
 import (
-	_ "github.com/jackc/pgx/v5/stdlib" // driver
+	"fmt"
+	"gym-bot/internal/app"
+	"time"
+
+	_ "github.com/jackc/pgx/stdlib"
 	"github.com/jmoiron/sqlx"
 )
 
-type Postgres struct {
-	ConnString string `yaml:"conn_string" validate:"required"`
-	// MaxOpenConns    int           `yaml:"max_open_conns" validate:"required"`
-	// ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" validate:"required"`
-	// MaxIdleConns    int           `yaml:"max_idle_conns" validate:"required"`
-	// ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" validate:"required"`
-}
+func InitPsqlDB(cfg *app.Config) (*sqlx.DB, error) {
+	connectionURL := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s application_name=%s",
+		cfg.Postgres.Host,
+		cfg.Postgres.Port,
+		cfg.Postgres.User,
+		cfg.Postgres.Password,
+		cfg.Postgres.DBName,
+		cfg.Postgres.SSLMode,
+		cfg.Postgres.ApplicationName,
+	)
 
-func New(connString string, cfg Postgres) (db *sqlx.DB, err error) {
-	db, err = sqlx.Connect("pgx", connString)
+	database, err := sqlx.Open("pgx", connectionURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// db.SetMaxOpenConns(cfg.MaxOpenConns)
-	// db.SetConnMaxLifetime(cfg.ConnMaxLifetime * time.Second)
-	// db.SetMaxIdleConns(cfg.MaxIdleConns)
-	// db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime * time.Second)
+	database.SetMaxOpenConns(cfg.Postgres.Settings.MaxOpenConns)
+	database.SetConnMaxLifetime(cfg.Postgres.Settings.ConnMaxLifetime * time.Second)
+	database.SetMaxIdleConns(cfg.Postgres.Settings.MaxIdleConns)
+	database.SetConnMaxIdleTime(cfg.Postgres.Settings.ConnMaxIdleTime * time.Second)
 
-	return db, nil
+	if err = database.Ping(); err != nil {
+		return nil, err
+	}
+
+	return database, nil
 }

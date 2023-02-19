@@ -3,17 +3,18 @@ package app
 import (
 	"fmt"
 	"github.com/go-playground/validator/v10"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	recover2 "github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/gofiber/helmet/v2"
+	"gym-bot/internal/controller"
+
+	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	gogrpc "google.golang.org/grpc"
-	"net"
+	tele "gopkg.in/telebot.v3"
+
+	"gym-bot/pkg/postgres"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 type App struct {
@@ -44,40 +45,33 @@ func (a *App) Run() error {
 	atom.SetLevel(zapcore.Level(*a.cfg.Logger.Level))
 	log.Infof("logger initialized successfully")
 
-	grpcServer := gogrpc.NewServer()
-	defer grpcServer.GracefulStop()
-
-	go func() {
-		lis, err := net.Listen("tcp", a.cfg.Server.Host+a.cfg.Server.Port)
+	psqlDB, err := postgres.InitPsqlDB(a.cfg)
+	if err != nil {
+		log.Fatalf("PostgreSQL init error: %s", err)
+	} else {
+		log.Infof("PostgreSQL connected, status: %#v", psqlDB.Stats())
+	}
+	defer func(psqlDB *sqlx.DB) {
+		err = psqlDB.Close()
 		if err != nil {
-			log.Fatalf("tcp sock: %s", err.Error())
+			log.Infof(err.Error())
+		} else {
+			log.Info("PostgreSQL closed properly")
 		}
-		defer func(lis net.Listener) {
-			err = lis.Close()
-			if err != nil {
+	}(psqlDB)
 
-			}
-		}(lis)
+	prefBot := tele.Settings{
+		Token:  a.cfg.Telegram.Token,
+		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+	}
 
-		err = grpcServer.Serve(lis)
-		if err != nil {
-			log.Fatalf("GRPC server: %s", err.Error())
-		}
-	}()
+	Bot, err := tele.NewBot(prefBot)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	app := fiber.New()
-
-	app.Use(helmet.New())
-	app.Use(recover2.New())
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowHeaders: "*",
-	}))
-	apiGroup := app.Group("api")
-
-	apiGroup.Get("register", )
-
-	log.Debug("Started GRPC server")
+	gymController := controller.NewBotController(Bot)
+	gymController.Start()
 
 	log.Debug("Application has started")
 
